@@ -1,0 +1,94 @@
+{
+  #Good visual/diagram of Input/Output Tools: https://docs.aws.amazon.com/step-functions/latest/dg/concepts-input-output-filtering.html
+  "Comment": "Test I/O for Step Functions",
+  "StartAt": "Map Inputs",
+  "States": {
+    "Map Inputs": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:123456789012:function:InputsAndOutputsAsMap:$LATEST",
+      "Next": "String To Int"
+      #There is no ResultPath, Parameters, etc here because the entire object is handled by the Lambda itself.
+      #This is NOT recommended; users do not get to benefit from strongly typed objects or named object fields as
+      #easily.  This also skips / makes no use of Input/Output field tools provided by step functions.
+      #Example Input/Output...
+      #Input: {"inputString": "42"}
+      #Output: {"inputString": "42", "newKey": "newValue"}
+    },
+    "String To Int": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:123456789012:function:StringToIntFunction:$LATEST",
+      "ResultPath": "$.intValue",
+      #ResultPath adds one field called "intValue" to the input object
+      #and uses the entire input object + new field as the output.
+      #Example Input/Output...
+      #Input: {"inputString": "42", "newKey": "newValue"}
+      #Output: {"inputString": "42", "newKey": "newValue", "intValue": 42}
+      "Next": "Half Rounded Up"
+    },
+    "Half Rounded Up": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:123456789012:function:IntHalverRoundedUpFunction:$LATEST",
+      "ResultPath": "$.halfRoundedUp",
+      #ResultPath adds one field called "halfRoundedUp" to the input object
+      #and uses the entire input object + new field as the output.
+      #Example Input/Output...
+      #Input: {"inputString": "42", "newKey": "newValue", "intValue": 42}
+      #Output: {"inputString": "42", "newKey": "newValue", "intValue": 42, "halfRoundedUp: 21}
+      "Next": "Rearrange Results"
+    },
+    "Rearrange Results": {
+      "Type": "Pass",
+      "Parameters": {
+      #Parameters performs a MAP of the input object provided to the lambda to some other object used as input.
+      #The MAP operation can be dynamic when fields reference $. Field keys that end with ".$" will be new fields
+      #added to the output object.  Completely static keys and values are also possible here if desired.
+      #inputString.$ -- Maps the inputString field with no changes to the result object.
+      #halfRoundedUp.$ -- Maps the halfRoundedUp field with no changes to the result object.
+      #mappedFrom.$ -- Maps the entire starting input object to a new field called mappedFrom.
+        "inputString.$": "$.inputString",
+        "halfRoundedUp.$": "$.halfRoundedUp",
+        "mappedFrom.$": "$"
+      },
+      #Example Input/Output... (This is NOT GENERALLY lambda output... this is the output of "Parameters",
+      #which is used as lambda input.  Because this is a Pass type operation, this just happens to also be
+      #lambda output.)
+      #Input: {"inputString": "42", "newKey": "newValue", "intValue": 42, "halfRoundedUp: 21}
+      #Output: {
+      #  "inputString": "42",
+      #  "halfRoundedUp": 21,
+      #  "mappedFrom": {
+      #    "inputString": "42",
+      #    "newKey": "newValue",
+      #    "intValue": 42,
+      #    "halfRoundedUp": 21
+      #  }
+      "Next": "Return Original Non-Rearranged Results"
+    },
+    "Return Original Non-Rearranged Results": {
+      "Type": "Pass",
+      "InputPath": "$.mappedFrom",
+      #InputPath performs a FILTER of the input object's fields (BEFORE "Parameters" if both
+      #are used) so that only one key/value pair is kept for the input of this step.  Because this is a PASS step,
+      #the input is equal to the output, so the output will be only the values side the "mappedFrom" field
+      #Example Input/Output
+      #Input: {
+      #  "inputString": "42",
+      #  "halfRoundedUp": 21,
+      #  "mappedFrom": {
+      #    "inputString": "42",
+      #    "newKey": "newValue",
+      #    "intValue": 42,
+      #    "halfRoundedUp": 21
+      #  }
+      #}
+      #Output (both value that is given to step as input AND the actual output because this is a PASS step)
+      #Output: {
+      #  "inputString": "42",
+      #  "newKey": "newValue",
+      #  "intValue": 42,
+      #  "halfRoundedUp": 21
+      #}
+      "End": true
+    }
+  }
+}
